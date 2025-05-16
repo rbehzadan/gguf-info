@@ -1,20 +1,3 @@
-**`gguf-info`**
-
-* Simple, clear, UNIX-style
-* Easily searchable and guessable by others
-* Aligns with tools like `ffprobe`, `pdfinfo`, etc.
-
----
-
-### ✅ Short Description
-
-> A CLI tool to inspect and extract metadata from GGUF language model files.
-
----
-
-### ✅ `README.md`
-
-````markdown
 # gguf-info
 
 **gguf-info** is a command-line tool for inspecting [GGUF](https://github.com/ggerganov/ggml/blob/master/docs/gguf.md) (GGML Unified Format) language model files.
@@ -69,8 +52,3 @@ GGUF is a modern file format for quantized large language models, used in `llama
 ## 📜 License
 
 MIT
-
----
-
-Created by [Reza Behzadan](https://github.com/rbehzadan)
-
