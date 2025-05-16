@@ -1,74 +1,127 @@
-name: Release
+name: Build and Release
 
 on:
   push:
     tags:
-      - "v*.*.*"
+      - 'v*'
 
 jobs:
   build:
-    name: Build and upload release binaries
-    runs-on: ubuntu-latest
-
+    name: Build ${{ matrix.os }}-${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
     strategy:
+      fail-fast: false
       matrix:
         include:
-          - target: x86_64-unknown-linux-gnu
-            os: linux
-            arch: x86_64
-            ext: ""
-          - target: aarch64-unknown-linux-gnu
-            os: linux
-            arch: aarch64
-            ext: ""
-          - target: armv7-unknown-linux-gnueabihf
-            os: linux
-            arch: armv7
-            ext: ""
-          # - target: x86_64-apple-darwin
-          #   os: macos
-          #   arch: x86_64
-          #   ext: ""
-          # - target: aarch64-apple-darwin
-          #   os: macos
-          #   arch: aarch64
-          #   ext: ""
-          # - target: x86_64-pc-windows-msvc
-          #   os: windows
-          #   arch: x86_64
-          #   ext: ".exe"
+          # Linux builds
+          - os: linux
+            arch: amd64
+            runner: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: linux
+            arch: arm64
+            runner: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+          - os: linux
+            arch: arm7
+            runner: ubuntu-latest
+            target: armv7-unknown-linux-gnueabihf
+            
+          # macOS builds
+          - os: macos
+            arch: amd64
+            runner: macos-latest
+            target: x86_64-apple-darwin
+          - os: macos
+            arch: arm64
+            runner: macos-latest
+            target: aarch64-apple-darwin
+            
+          # Windows builds
+          - os: windows
+            arch: amd64
+            runner: windows-latest
+            target: x86_64-pc-windows-msvc
+          - os: windows
+            arch: arm64
+            runner: windows-latest
+            target: aarch64-pc-windows-msvc
+          
+          # FreeBSD builds (cross-compilation from Linux)
+          - os: freebsd
+            arch: amd64
+            runner: ubuntu-latest
+            target: x86_64-unknown-freebsd
+          - os: freebsd
+            arch: arm64
+            runner: ubuntu-latest
+            target: aarch64-unknown-freebsd
 
     steps:
-      - name: Checkout source code
-        uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: actions-rs/toolchain@v1
+      - uses: actions/checkout@v3
+      
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
-          target: ${{ matrix.target }}
-          override: true
+          targets: ${{ matrix.target }}
+      
+      - name: Install cross-compilation tools
+        if: matrix.os == 'linux' && (matrix.arch == 'arm64' || matrix.arch == 'arm7')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu gcc-arm-linux-gnueabihf
 
-      - name: Install cross
-        uses: actions-rs/install@v0.1
+      - name: Cargo build
+        run: |
+          cargo build --release --target ${{ matrix.target }}
+      
+      - name: Prepare artifact
+        shell: bash
+        run: |
+          BINARY_NAME=$(cargo metadata --no-deps --format-version=1 | jq -r '.packages[0].targets[] | select(.kind[0] == "bin") | .name')
+          mkdir -p ./artifacts
+          
+          if [[ "${{ matrix.os }}" == "windows" ]]; then
+            cp target/${{ matrix.target }}/release/${BINARY_NAME}.exe ./artifacts/
+          else
+            cp target/${{ matrix.target }}/release/${BINARY_NAME} ./artifacts/
+          fi
+          
+          cd artifacts
+          ARCHIVE_NAME="${BINARY_NAME}-${{ matrix.os }}-${{ matrix.arch }}"
+          
+          if [[ "${{ matrix.os }}" == "windows" ]]; then
+            7z a -tzip "${ARCHIVE_NAME}.zip" ${BINARY_NAME}.exe
+            echo "ARTIFACT=${ARCHIVE_NAME}.zip" >> $GITHUB_ENV
+          else
+            tar czf "${ARCHIVE_NAME}.tar.gz" ${BINARY_NAME}
+            echo "ARTIFACT=${ARCHIVE_NAME}.tar.gz" >> $GITHUB_ENV
+          fi
+      
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
         with:
-          crate: cross
-          version: latest
-
-      - name: Build with cross
-        run: |
-          cross build --release --target ${{ matrix.target }}
-
-      - name: Rename binary
-        run: |
-          name="gguf-info-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.ext }}"
-          cp target/${{ matrix.target }}/release/gguf-info${{ matrix.ext }} "$name"
-          echo "BIN_NAME=$name" >> "$GITHUB_ENV"
-
-      - name: Upload to GitHub Release
+          name: ${{ env.ARTIFACT }}
+          path: ./artifacts/${{ env.ARTIFACT }}
+          
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        
+      - name: Download artifacts
+        uses: actions/download-artifact@v3
+        with:
+          path: ./artifacts
+          
+      - name: Create Release
+        id: create_release
         uses: softprops/action-gh-release@v1
         with:
-          files: ${{ env.BIN_NAME }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
+          files: ./artifacts/**/*
+          draft: false
+          prerelease: false
+          generate_release_notes: true
