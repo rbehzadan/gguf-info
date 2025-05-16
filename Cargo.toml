@@ -1,0 +1,11 @@
+[package]
+name = "gguf-info"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.98"
+clap = { version = "4.5.38", features = ["derive"] }
+gguf-rs = "0.1.4"
+memmap2 = "0.9.5"
+serde_json = "1.0.140"
