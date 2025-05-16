@@ -25,14 +25,14 @@ jobs:
             os: linux
             arch: armv7
             ext: ""
-          - target: x86_64-apple-darwin
-            os: macos
-            arch: x86_64
-            ext: ""
-          - target: aarch64-apple-darwin
-            os: macos
-            arch: aarch64
-            ext: ""
+          # - target: x86_64-apple-darwin
+          #   os: macos
+          #   arch: x86_64
+          #   ext: ""
+          # - target: aarch64-apple-darwin
+          #   os: macos
+          #   arch: aarch64
+          #   ext: ""
           # - target: x86_64-pc-windows-msvc
           #   os: windows
           #   arch: x86_64
