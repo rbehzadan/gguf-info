@@ -7,102 +7,156 @@ on:
 
 jobs:
   build:
-    name: Build ${{ matrix.os }}-${{ matrix.arch }}
+    name: Build ${{ matrix.name }}
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
         include:
           # Linux builds
-          - os: linux
-            arch: amd64
+          - name: linux-amd64
             runner: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-          - os: linux
-            arch: arm64
+            cross: false
+            
+          - name: linux-arm64
             runner: ubuntu-latest
             target: aarch64-unknown-linux-gnu
-          - os: linux
-            arch: arm7
+            cross: true
+            
+          - name: linux-arm7
             runner: ubuntu-latest
             target: armv7-unknown-linux-gnueabihf
+            cross: true
             
           # macOS builds
-          - os: macos
-            arch: amd64
+          - name: macos-amd64
             runner: macos-latest
             target: x86_64-apple-darwin
-          - os: macos
-            arch: arm64
+            cross: false
+            
+          - name: macos-arm64
             runner: macos-latest
             target: aarch64-apple-darwin
+            cross: false
             
           # Windows builds
-          - os: windows
-            arch: amd64
+          - name: windows-amd64
             runner: windows-latest
             target: x86_64-pc-windows-msvc
-          - os: windows
-            arch: arm64
+            cross: false
+            
+          - name: windows-arm64
             runner: windows-latest
             target: aarch64-pc-windows-msvc
-          
-          # FreeBSD builds (cross-compilation from Linux)
-          - os: freebsd
-            arch: amd64
+            cross: false
+            
+          # FreeBSD builds
+          - name: freebsd-amd64
             runner: ubuntu-latest
             target: x86_64-unknown-freebsd
-          - os: freebsd
-            arch: arm64
+            cross: true
+            
+          - name: freebsd-arm64
             runner: ubuntu-latest
             target: aarch64-unknown-freebsd
+            cross: true
 
     steps:
       - uses: actions/checkout@v4
-      
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: ${{ matrix.target }}
+          override: true
+          profile: minimal
       
-      - name: Install cross-compilation tools
-        if: matrix.os == 'linux' && (matrix.arch == 'arm64' || matrix.arch == 'arm7')
+      - name: Install dependencies for ARM Linux builds
+        if: matrix.name == 'linux-arm64' || matrix.name == 'linux-arm7'
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu gcc-arm-linux-gnueabihf
+          sudo apt-get install -y --no-install-recommends \
+            gcc-aarch64-linux-gnu libc6-dev-arm64-cross \
+            gcc-arm-linux-gnueabihf libc6-dev-armhf-cross
 
-      - name: Cargo build
-        run: |
-          cargo build --release --target ${{ matrix.target }}
+      - name: Install cross
+        if: matrix.cross
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cross
       
-      - name: Prepare artifact
+      - name: Build with Cargo (native)
+        if: "!matrix.cross"
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release --target ${{ matrix.target }}
+          
+      - name: Build with Cross (cross-compilation)
+        if: matrix.cross
+        run: cross build --release --target ${{ matrix.target }}
+        
+      - name: Prepare artifact name
+        id: prepare-artifact
         shell: bash
         run: |
-          BINARY_NAME=$(cargo metadata --no-deps --format-version=1 | jq -r '.packages[0].targets[] | select(.kind[0] == "bin") | .name')
-          mkdir -p ./artifacts
+          BINARY_NAME=$(cargo metadata --format-version=1 --no-deps | jq -r '.packages[0].targets[] | select(.kind[] | contains("bin")) | .name' | head -n1)
+          echo "BINARY_NAME=${BINARY_NAME}" >> $GITHUB_ENV
           
-          if [[ "${{ matrix.os }}" == "windows" ]]; then
-            cp target/${{ matrix.target }}/release/${BINARY_NAME}.exe ./artifacts/
+          # Determine file extension based on OS
+          if [[ "${{ matrix.name }}" =~ windows ]]; then
+            echo "BINARY_EXT=.exe" >> $GITHUB_ENV
           else
-            cp target/${{ matrix.target }}/release/${BINARY_NAME} ./artifacts/
+            echo "BINARY_EXT=" >> $GITHUB_ENV
           fi
           
-          cd artifacts
-          ARCHIVE_NAME="${BINARY_NAME}-${{ matrix.os }}-${{ matrix.arch }}"
+          echo "ARTIFACT_NAME=${BINARY_NAME}-${{ matrix.name }}" >> $GITHUB_ENV
+      
+      - name: Create distribution directory
+        shell: bash
+        run: |
+          mkdir -p dist
           
-          if [[ "${{ matrix.os }}" == "windows" ]]; then
-            7z a -tzip "${ARCHIVE_NAME}.zip" ${BINARY_NAME}.exe
-            echo "ARTIFACT=${ARCHIVE_NAME}.zip" >> $GITHUB_ENV
+          # Copy binary to dist directory
+          if [[ "${{ matrix.name }}" =~ windows ]]; then
+            cp "target/${{ matrix.target }}/release/${{ env.BINARY_NAME }}${{ env.BINARY_EXT }}" dist/
           else
-            tar czf "${ARCHIVE_NAME}.tar.gz" ${BINARY_NAME}
-            echo "ARTIFACT=${ARCHIVE_NAME}.tar.gz" >> $GITHUB_ENV
+            cp "target/${{ matrix.target }}/release/${{ env.BINARY_NAME }}" dist/
           fi
       
-      - name: Upload artifact
+      - name: Create archive (Windows)
+        if: contains(matrix.name, 'windows')
+        shell: bash
+        run: |
+          cd dist
+          7z a -tzip "../${{ env.ARTIFACT_NAME }}.zip" ./*
+      
+      - name: Create archive (Unix)
+        if: "!contains(matrix.name, 'windows')"
+        shell: bash
+        run: |
+          cd dist
+          tar -czvf "../${{ env.ARTIFACT_NAME }}.tar.gz" ./*
+      
+      - name: Upload artifact (Windows)
+        if: contains(matrix.name, 'windows')
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.ARTIFACT }}
-          path: ./artifacts/${{ env.ARTIFACT }}
+          name: ${{ env.ARTIFACT_NAME }}
+          path: ${{ env.ARTIFACT_NAME }}.zip
+          retention-days: 3
+      
+      - name: Upload artifact (Unix)
+        if: "!contains(matrix.name, 'windows')"
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT_NAME }}
+          path: ${{ env.ARTIFACT_NAME }}.tar.gz
+          retention-days: 3
           
   release:
     name: Create Release
@@ -117,8 +171,10 @@ jobs:
         with:
           path: ./artifacts
           
+      - name: List artifacts
+        run: find ./artifacts -type f | sort
+          
       - name: Create Release
-        id: create_release
         uses: softprops/action-gh-release@v2
         with:
           files: ./artifacts/**/*
