@@ -6,9 +6,9 @@ use serde_json::json;
 
 /// Display key GGUF model info or raw metadata in JSON format
 #[derive(Parser)]
-#[command(name = "llminfo")]
-#[command(version = "0.2.0")]
-#[command(about = "Inspect GGUF model metadata", long_about = None)]
+#[command(name = env!("CARGO_PKG_NAME"))]
+#[command(version = env!("CARGO_PKG_VERSION"))]
+#[command(about = env!("CARGO_PKG_DESCRIPTION"), long_about = None)]
 struct Args {
     /// Path to the GGUF model
     #[arg(short, long)]
