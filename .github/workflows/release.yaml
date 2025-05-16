@@ -39,7 +39,7 @@ jobs:
             ext: ".exe"
 
     steps:
-      - name: Checkout source
+      - name: Checkout source code
         uses: actions/checkout@v4
 
       - name: Install Rust toolchain
@@ -55,16 +55,20 @@ jobs:
           crate: cross
           version: latest
 
-      - name: Build binary with cross
+      - name: Build with cross
         run: |
           cross build --release --target ${{ matrix.target }}
-          BIN_NAME=gguf-info-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.ext }}
-          cp target/${{ matrix.target }}/release/gguf-info${{ matrix.ext }} $BIN_NAME
 
-      - name: Upload release asset
+      - name: Rename binary
+        run: |
+          name="gguf-info-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.ext }}"
+          cp target/${{ matrix.target }}/release/gguf-info${{ matrix.ext }} "$name"
+          echo "BIN_NAME=$name" >> "$GITHUB_ENV"
+
+      - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          files: gguf-info-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.ext }}
+          files: ${{ env.BIN_NAME }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
