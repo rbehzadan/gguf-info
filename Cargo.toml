@@ -1,6 +1,6 @@
 [package]
 name = "gguf-info"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 description = "CLI tool to inspect and extract metadata from GGUF language model files."
 
