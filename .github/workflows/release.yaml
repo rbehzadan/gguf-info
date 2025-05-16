@@ -33,10 +33,10 @@ jobs:
             os: macos
             arch: aarch64
             ext: ""
-          - target: x86_64-pc-windows-msvc
-            os: windows
-            arch: x86_64
-            ext: ".exe"
+          # - target: x86_64-pc-windows-msvc
+          #   os: windows
+          #   arch: x86_64
+          #   ext: ".exe"
 
     steps:
       - name: Checkout source code
