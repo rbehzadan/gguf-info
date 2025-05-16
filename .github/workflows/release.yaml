@@ -1,0 +1,70 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  build:
+    name: Build and upload release binaries
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: linux
+            arch: x86_64
+            ext: ""
+          - target: aarch64-unknown-linux-gnu
+            os: linux
+            arch: aarch64
+            ext: ""
+          - target: armv7-unknown-linux-gnueabihf
+            os: linux
+            arch: armv7
+            ext: ""
+          - target: x86_64-apple-darwin
+            os: macos
+            arch: x86_64
+            ext: ""
+          - target: aarch64-apple-darwin
+            os: macos
+            arch: aarch64
+            ext: ""
+          - target: x86_64-pc-windows-msvc
+            os: windows
+            arch: x86_64
+            ext: ".exe"
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: ${{ matrix.target }}
+          override: true
+
+      - name: Install cross
+        uses: actions-rs/install@v0.1
+        with:
+          crate: cross
+          version: latest
+
+      - name: Build binary with cross
+        run: |
+          cross build --release --target ${{ matrix.target }}
+          BIN_NAME=gguf-info-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.ext }}
+          cp target/${{ matrix.target }}/release/gguf-info${{ matrix.ext }} $BIN_NAME
+
+      - name: Upload release asset
+        uses: softprops/action-gh-release@v1
+        with:
+          files: gguf-info-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.ext }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
